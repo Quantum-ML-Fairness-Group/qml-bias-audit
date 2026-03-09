@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.env
+.venv
+venv/
+*.ipynb_checkpoints/
+results/*.json
+results/*.csv
+figures/*.png
+figures/*.pdf
+data/compas_raw.csv
+*.pt
+*.pkl
+.DS_Store
