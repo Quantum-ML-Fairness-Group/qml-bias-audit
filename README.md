@@ -40,8 +40,6 @@ qml-bias/
 │   ├── bias_attribution.py     # Shapley-based bias attribution
 │   └── visualization.py        # All plotting utilities
 ├── results/                    # Auto-generated JSON + figures
-├── notebooks/
-│   └── full_analysis.ipynb     # End-to-end walkthrough
 ├── requirements.txt
 └── README.md
 ```
@@ -56,17 +54,6 @@ qml-bias/
 
 ---
 
-## Fairness Metrics Computed
-
-| Metric | Definition |
-|--------|-----------|
-| **Demographic Parity Difference (DPD)** | \|P(ŷ=1\|A=0) - P(ŷ=1\|A=1)\| |
-| **Equalized Odds Difference (EOD)** | Max of TPR gap and FPR gap across groups |
-| **Disparate Impact (DI)** | P(ŷ=1\|A=unprivileged) / P(ŷ=1\|A=privileged) |
-| **Predictive Parity Difference (PPD)** | \|PPV_group0 - PPV_group1\| |
-| **Individual Fairness Score** | Lipschitz consistency across similar individuals |
-
----
 
 ## Models
 
@@ -83,60 +70,3 @@ qml-bias/
 All QVCs use the `default.qubit` simulator; swap to `qiskit.aer` for noise modeling.
 
 ---
-
-## Setup
-
-```bash
-git clone https://github.com/<your-org>/qml-bias.git
-cd qml-bias
-pip install -r requirements.txt
-```
-
-**Download COMPAS data:**
-```bash
-python data/load_compas.py  # fetches from ProPublica GitHub automatically
-```
-
-**Run full experiment pipeline:**
-```bash
-python experiments/run_classical.py   # ~2 min
-python experiments/run_quantum.py     # ~20-40 min depending on hardware
-python experiments/ablation_encoding.py
-```
-
-Results are saved to `results/` as JSON + figures.
-
----
-
-## Key Results (preliminary)
-
-| Model | Accuracy | DPD (race) | EOD (race) | DI |
-|-------|----------|------------|------------|-----|
-| Logistic Regression | — | — | — | — |
-| Random Forest | — | — | — | — |
-| MLP | — | — | — | — |
-| VQC-Angle | — | — | — | — |
-| VQC-Amplitude | — | — | — | — |
-| VQC-IQP | — | — | — | — |
-
-*Table auto-populated after running experiments.*
-
----
-
-## Dependencies
-
-- `pennylane >= 0.38`
-- `scikit-learn >= 1.4`
-- `torch >= 2.2`
-- `fairlearn >= 0.10`
-- `pandas`, `numpy`, `matplotlib`, `seaborn`
-
----
-
-## References
-
-1. Heredge et al. (2024). *Bias in Quantum Machine Learning.* arXiv:2405.xxxxx
-2. Larocca et al. (2022). *Diagnosing barren plateaus with tools from quantum optimal control.*
-3. Angwin et al. (2016). *Machine Bias.* ProPublica.
-4. Hardt et al. (2016). *Equality of Opportunity in Supervised Learning.* NeurIPS.
-5. Cerezo et al. (2021). *Variational Quantum Algorithms.* Nature Reviews Physics.
