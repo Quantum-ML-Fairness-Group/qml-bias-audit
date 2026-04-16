@@ -1,0 +1,20 @@
+[
+  {
+    "dataset": "compas",
+    "encoding": "angle",
+    "ansatz": "strongly_entangling",
+    "n_layers": 1,
+    "n_epochs": 1,
+    "n_qubits": 7,
+    "n_parameters": 21,
+    "train_time_s": 3.171325,
+    "accuracy": 0.4696969696969697,
+    "f1": 0.5229982964224872,
+    "roc_auc": 0.5104832933198475,
+    "DPD": 0.03988628499822322,
+    "DI": 0.9400281214848144,
+    "EOD": 0.05444255363036299,
+    "EOpp": 0.00978459291712308,
+    "PPD": 0.14599676142497298
+  }
+]
