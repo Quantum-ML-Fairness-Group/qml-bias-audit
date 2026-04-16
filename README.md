@@ -69,4 +69,15 @@ qml-bias/
 
 All QVCs use the `default.qubit` simulator; swap to `qiskit.aer` for noise modeling.
 
+## Examples to run code
+
+# All three encodings (angle, amplitude, IQP presets), full settings (~30–60 min)
+python experiments/run_quantum.py
+
+# Only one encoding preset
+python experiments/run_quantum.py --model angle      # or amplitude | iqp
+
+# Faster try: fewer epochs and/or smaller training set
+python experiments/run_quantum.py --n_epochs 20 --subsample 300
+
 ---
