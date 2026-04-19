@@ -98,9 +98,7 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         self.n_features_: Optional[int] = None
 
     def _build_device(self, n_qubits: int):
-        # Noise channels require mixed-state simulation.
-        dev_name = "default.mixed" if self.noise_type else self.device
-        return qml.device(dev_name, wires=n_qubits, shots=self.shots)
+        return qml.device(self.device, wires=n_qubits, shots=self.shots)
 
     def _build_circuit(self, dev, enc: EncodingSpec):
         ans = get_ansatz(self.ansatz)
@@ -111,13 +109,14 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         # Mutable holder so the training loop can update noise strength per batch.
         noise_p = [0.0]
 
-        @qml.qnode(dev, interface="autograd", diff_method="parameter-shift" if noise_type else "best")
+        @qml.qnode(dev, interface="autograd", diff_method="best")
         def circuit(weights, x):
             enc.apply_encoding_circuit(x)
             ans.apply(weights, n_qubits)
             if noise_type:
                 for wire in range(n_qubits):
-                    qml.DepolarizingChannel(noise_p[0], wires=wire)
+                    qml.RX(noise_p[0] * np.pi, wires=wire)
+                    qml.RZ(noise_p[0] * np.pi, wires=wire)
             # Measurement must be constructed inside the qfunc (not captured from outside).
             return _measurement_op(measurement, n_qubits)
 
@@ -138,7 +137,7 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
             circuit._noise_p[0] = float(rng.uniform(0.0, self.noise_strength))
 
     def _loss(self, circuit, weights, X_batch, y_batch):
-        predictions = pnp.array([circuit(weights, x) for x in X_batch])
+        predictions = circuit(weights, X_batch)
         probs = (predictions + 1) / 2
         probs = pnp.clip(probs, 1e-7, 1 - 1e-7)
         y = pnp.array(y_batch, dtype=float)
@@ -212,7 +211,7 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
             rng = np.random.RandomState(self.random_state)
             self._set_noise_p(self._circuit, rng)
         X_enc = self.encoding_spec_.preprocess(np.asarray(X, dtype=np.float64))
-        scores = np.array([float(self._circuit(self.weights_, x)) for x in X_enc])
+        scores = np.array(self._circuit(self.weights_, X_enc), dtype=float)
         probs = np.clip((scores + 1) / 2, 0.0, 1.0)
         return np.column_stack([1 - probs, probs])
 

@@ -113,13 +113,13 @@ def evaluate_quantum_model(name, model, splits):
     for _, row in df.iterrows():
         attr = row["attribute"]
         print(f"\n  [{attr.upper()}]")
-        print(f"    Accuracy:              {row['overall_accuracy']:.4f}")
-        print(f"    F1 Score:              {row['overall_f1']:.4f}")
-        print(f"    ROC-AUC:               {row['overall_roc_auc']:.4f}")
-        print(f"    Demographic Parity Δ:  {row['demographic_parity_diff']:.4f}  {'✓' if row['fair_dp'] else '✗'}")
-        print(f"    Disparate Impact:      {row['disparate_impact']:.4f}  {'✓' if row['fair_di'] else '✗'}")
-        print(f"    Equalized Odds Δ:      {row['equalized_odds_diff']:.4f}  {'✓' if row['fair_eo'] else '✗'}")
-        print(f"    Equal Opportunity Δ:   {row['equal_opportunity_diff']:.4f}")
+        print(f"    Accuracy:              {row['overall_accuracy']:.4f}  ↑")
+        print(f"    F1 Score:              {row['overall_f1']:.4f}  ↑")
+        print(f"    ROC-AUC:               {row['overall_roc_auc']:.4f}  ↑")
+        print(f"    Demographic Parity Δ:  {row['demographic_parity_diff']:.4f}  ↓  {'✓' if row['fair_dp'] else '✗'}")
+        print(f"    Disparate Impact:      {row['disparate_impact']:.4f}  →1  {'✓' if row['fair_di'] else '✗'}")
+        print(f"    Equalized Odds Δ:      {row['equalized_odds_diff']:.4f}  ↓  {'✓' if row['fair_eo'] else '✗'}")
+        print(f"    Equal Opportunity Δ:   {row['equal_opportunity_diff']:.4f}  ↓")
 
     return {
         "model": name,

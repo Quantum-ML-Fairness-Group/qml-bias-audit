@@ -24,18 +24,18 @@ def iqp_encoding_block(x: np.ndarray, n_qubits: int) -> None:
     for i in range(n_qubits):
         qml.Hadamard(wires=i)
     for i in range(n_qubits):
-        qml.RZ(x[i], wires=i)
+        qml.RZ(x[..., i], wires=i)
     for i in range(n_qubits):
         for j in range(i + 1, n_qubits):
             qml.CNOT(wires=[i, j])
-            qml.RZ(x[i] * x[j], wires=j)
+            qml.RZ(x[..., i] * x[..., j], wires=j)
             qml.CNOT(wires=[i, j])
 
 
 def apply_angle_encoding(x: np.ndarray, n_qubits: int) -> None:
     """RY(π·x_i) on each wire i (x length >= n_qubits)."""
     for i in range(n_qubits):
-        qml.RY(np.pi * x[i], wires=i)
+        qml.RY(np.pi * x[..., i], wires=i)
 
 
 def apply_amplitude_encoding(x: np.ndarray, n_qubits: int) -> None:

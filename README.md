@@ -67,20 +67,29 @@ qml-bias/
 - **VQC-Amplitude** — Amplitude encoding (full state initialization)
 - **VQC-IQP** — IQP feature map (closer to quantum advantage regime)
 
-All QVCs use the `default.qubit` simulator; swap to `qiskit.aer` for noise modeling.
+All QVCs use the `default.qubit` simulator with native coherent noise support (see `--noise` flag).
 
 ## Examples to run code
 
-**All three encodings (angle, amplitude, IQP presets), full settings (~30–60 min)**
-
+**All three encodings (angle, amplitude, IQP presets), full settings (~10 min)**
+```
 python experiments/run_quantum.py
-
+```
 **Only one encoding preset**
-
+```
 python experiments/run_quantum.py --model angle      # or amplitude | iqp
-
+```
 **Faster try: fewer epochs and/or smaller training set**
-
+```
 python experiments/run_quantum.py --n_epochs 20 --subsample 300
+```
+**Fixed coherent noise (depolarizing strength 0.01 on all qubits)**
+```
+python experiments/run_quantum.py --noise fixed --noise_strength 0.01
+```
+**Random coherent noise (strength sampled per batch from Uniform(0, 0.05))**
 
+```
+python experiments/run_quantum.py --noise random --noise_strength 0.05 --model angle
+```
 ---
