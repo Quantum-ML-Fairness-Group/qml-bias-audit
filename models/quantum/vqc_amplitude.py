@@ -32,6 +32,8 @@ class VQCAmplitude(ConfigurableVQC):
         device: str = "default.qubit",
         shots: int = None,
         random_state: int = 42,
+        noise_type: str = None,
+        noise_strength: float = 0.0,
     ):
         self._n_features_init = n_features
         super().__init__(
@@ -47,6 +49,8 @@ class VQCAmplitude(ConfigurableVQC):
             random_state=random_state,
             n_features_expected=n_features,
             model_label="VQC-Amp",
+            noise_type=noise_type,
+            noise_strength=noise_strength,
         )
 
     @property

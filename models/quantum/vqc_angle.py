@@ -33,6 +33,8 @@ class VQCAngle(ConfigurableVQC):
         device: str = "default.qubit",
         shots: int = None,
         random_state: int = 42,
+        noise_type: str = None,
+        noise_strength: float = 0.0,
     ):
         super().__init__(
             encoding="angle",
@@ -48,4 +50,6 @@ class VQCAngle(ConfigurableVQC):
             user_n_qubits=n_qubits,
             n_features_expected=n_qubits,
             model_label="VQC-Angle",
+            noise_type=noise_type,
+            noise_strength=noise_strength,
         )

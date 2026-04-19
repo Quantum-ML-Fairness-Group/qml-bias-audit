@@ -17,6 +17,8 @@ from tqdm import tqdm
 from models.quantum.ansatze import get_ansatz
 from models.quantum.encodings import EncodingSpec, resolve_encoding
 
+_NOISE_TYPES = ("fixed", "random")
+
 
 def _measurement_op(measurement: str, n_qubits: int):
     measurement = measurement.lower()
@@ -68,7 +70,11 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         n_encoding_reps: int = 2,
         n_features_expected: Optional[int] = None,
         model_label: str = "VQC",
+        noise_type: Optional[str] = None,
+        noise_strength: float = 0.0,
     ):
+        if noise_type is not None and noise_type not in _NOISE_TYPES:
+            raise ValueError(f"noise_type must be one of {_NOISE_TYPES} or None, got {noise_type!r}")
         self.encoding = encoding
         self.ansatz = ansatz
         self.measurement = measurement
@@ -83,6 +89,8 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         self.n_encoding_reps = n_encoding_reps
         self.n_features_expected = n_features_expected
         self.model_label = model_label
+        self.noise_type = noise_type
+        self.noise_strength = noise_strength
 
         self.weights_ = None
         self.loss_history_: list = []
@@ -90,25 +98,44 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         self.n_features_: Optional[int] = None
 
     def _build_device(self, n_qubits: int):
-        return qml.device(self.device, wires=n_qubits, shots=self.shots)
+        # Noise channels require mixed-state simulation.
+        dev_name = "default.mixed" if self.noise_type else self.device
+        return qml.device(dev_name, wires=n_qubits, shots=self.shots)
 
     def _build_circuit(self, dev, enc: EncodingSpec):
         ans = get_ansatz(self.ansatz)
         measurement = self.measurement
+        noise_type = self.noise_type
+        n_qubits = enc.n_qubits
 
-        @qml.qnode(dev, interface="autograd", diff_method="best")
+        # Mutable holder so the training loop can update noise strength per batch.
+        noise_p = [0.0]
+
+        @qml.qnode(dev, interface="autograd", diff_method="parameter-shift" if noise_type else "best")
         def circuit(weights, x):
             enc.apply_encoding_circuit(x)
-            ans.apply(weights, enc.n_qubits)
+            ans.apply(weights, n_qubits)
+            if noise_type:
+                for wire in range(n_qubits):
+                    qml.DepolarizingChannel(noise_p[0], wires=wire)
             # Measurement must be constructed inside the qfunc (not captured from outside).
-            return _measurement_op(measurement, enc.n_qubits)
+            return _measurement_op(measurement, n_qubits)
 
+        # Expose the noise holder so _loss can update it.
+        circuit._noise_p = noise_p
         return circuit
 
     def _init_weights(self, n_qubits: int):
         rng = np.random.RandomState(self.random_state)
         ans = get_ansatz(self.ansatz)
         return ans.init_weights(self.n_layers, n_qubits, rng)
+
+    def _set_noise_p(self, circuit, rng: np.random.RandomState):
+        """Update the circuit's depolarizing noise probability for the current batch."""
+        if self.noise_type == "fixed":
+            circuit._noise_p[0] = float(self.noise_strength)
+        elif self.noise_type == "random":
+            circuit._noise_p[0] = float(rng.uniform(0.0, self.noise_strength))
 
     def _loss(self, circuit, weights, X_batch, y_batch):
         predictions = pnp.array([circuit(weights, x) for x in X_batch])
@@ -138,9 +165,13 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         weights = self._init_weights(enc.n_qubits)
         opt = qml.AdamOptimizer(stepsize=self.lr)
 
+        rng = np.random.RandomState(self.random_state)
         n = len(X_train)
         best_val = float("inf")
         self.val_loss_history_ = []
+
+        if self.noise_type:
+            print(f"  Noise: {self.noise_type}, strength={self.noise_strength}")
 
         desc = f"[{self.model_label}] Training"
         for epoch in tqdm(range(self.n_epochs), desc=desc):
@@ -152,6 +183,8 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
                 Xb = X_shuf[start : start + self.batch_size]
                 yb = y_shuf[start : start + self.batch_size]
 
+                self._set_noise_p(circuit, rng)
+
                 def cost(w):
                     return self._loss(circuit, w, Xb, yb)
 
@@ -161,6 +194,7 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
             self.loss_history_.append(float(epoch_loss))
 
             if X_val_p is not None:
+                self._set_noise_p(circuit, rng)
                 vl = float(self._loss(circuit, weights, X_val_p, y_val))
                 self.val_loss_history_.append(vl)
                 if vl < best_val:
@@ -174,6 +208,9 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
     def predict_proba(self, X) -> np.ndarray:
         if self.weights_ is None or self.encoding_spec_ is None:
             raise RuntimeError("Model not fitted. Call fit() first.")
+        if self.noise_type:
+            rng = np.random.RandomState(self.random_state)
+            self._set_noise_p(self._circuit, rng)
         X_enc = self.encoding_spec_.preprocess(np.asarray(X, dtype=np.float64))
         scores = np.array([float(self._circuit(self.weights_, x)) for x in X_enc])
         probs = np.clip((scores + 1) / 2, 0.0, 1.0)

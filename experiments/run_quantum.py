@@ -10,6 +10,8 @@ Usage:
     python experiments/run_quantum.py --model angle      # single model
     python experiments/run_quantum.py --n_epochs 30      # quick run
     python experiments/run_quantum.py --subsample 300    # small data for testing
+    python experiments/run_quantum.py --noise fixed --noise_strength 0.01
+    python experiments/run_quantum.py --noise random --noise_strength 0.05
 
 Runtime note:
   Full run on CPU: ~30-60 min total
@@ -46,7 +48,7 @@ def subsample_splits(splits, n: int, seed: int = 42):
     return out
 
 
-def build_quantum_models(n_features: int, n_epochs: int):
+def build_quantum_models(n_features: int, n_epochs: int, noise_type=None, noise_strength=0.0):
     """Instantiate all QML models with matched hyperparameters."""
     return {
         "VQC-Angle": VQCAngle(
@@ -56,6 +58,8 @@ def build_quantum_models(n_features: int, n_epochs: int):
             lr=0.02,
             batch_size=32,
             random_state=42,
+            noise_type=noise_type,
+            noise_strength=noise_strength,
         ),
         "VQC-Amplitude": VQCAmplitude(
             n_features=n_features,
@@ -64,6 +68,8 @@ def build_quantum_models(n_features: int, n_epochs: int):
             lr=0.02,
             batch_size=32,
             random_state=42,
+            noise_type=noise_type,
+            noise_strength=noise_strength,
         ),
         "VQC-IQP": VQCIQP(
             n_qubits=n_features,
@@ -73,6 +79,8 @@ def build_quantum_models(n_features: int, n_epochs: int):
             lr=0.015,
             batch_size=32,
             random_state=42,
+            noise_type=noise_type,
+            noise_strength=noise_strength,
         ),
     }
 
@@ -134,7 +142,7 @@ def main(args):
     n_features = splits["X_train"].shape[1]
     print(f"Input dimension: {n_features} features")
 
-    all_models = build_quantum_models(n_features, args.n_epochs)
+    all_models = build_quantum_models(n_features, args.n_epochs, args.noise, args.noise_strength)
 
     # Filter if specific model requested
     if args.model:
@@ -189,5 +197,9 @@ if __name__ == "__main__":
                         help="Training epochs (default 60; use 20 for quick test)")
     parser.add_argument("--subsample", type=int, default=None,
                         help="Subsample N training points for speed")
+    parser.add_argument("--noise", type=str, default=None, choices=["fixed", "random"],
+                        help="Noise type: fixed (constant depolarizing) or random (per-batch sampled)")
+    parser.add_argument("--noise_strength", type=float, default=0.01,
+                        help="Max depolarizing noise probability (default 0.0)")
     args = parser.parse_args()
     main(args)
