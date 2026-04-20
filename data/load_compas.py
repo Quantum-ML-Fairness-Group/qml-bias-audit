@@ -23,6 +23,12 @@ COMPAS_URL = (
 )
 
 CACHE_PATH = Path(__file__).parent / "compas_raw.csv"
+LOCAL_CANDIDATES = [
+    Path(__file__).parent / "compas_raw.csv",
+    Path(__file__).parent / "raw" / "compas" / "compas-scores-two-years.csv",
+    Path(__file__).parent / "raw" / "compas" / "cox-violent-parsed.csv",
+    Path(__file__).parent / "raw" / "compas" / "cox-violent-parsed_filt.csv",
+]
 
 # Features used in ProPublica's analysis (standard in fairness literature)
 NUMERIC_FEATURES = [
@@ -43,9 +49,10 @@ BINARY_RACE_GROUPS = {"African-American": 0, "Caucasian": 1}
 
 def download_compas(cache: bool = True) -> pd.DataFrame:
     """Download raw COMPAS CSV, optionally cache locally."""
-    if cache and CACHE_PATH.exists():
-        print(f"[data] Loading cached COMPAS from {CACHE_PATH}")
-        return pd.read_csv(CACHE_PATH)
+    for path in LOCAL_CANDIDATES:
+        if path.exists():
+            print(f"[data] Loading local COMPAS from {path}")
+            return pd.read_csv(path)
     print(f"[data] Fetching COMPAS from ProPublica GitHub...")
     df = pd.read_csv(COMPAS_URL)
     if cache:
@@ -82,6 +89,9 @@ def preprocess_compas(
     # --- Standard ProPublica filter ---
     df = df[df["days_b_screening_arrest"] <= 30].copy()
     df = df[df["days_b_screening_arrest"] >= -30].copy()
+    if TARGET not in df.columns and "is_recid" in df.columns:
+        df[TARGET] = df["is_recid"]
+
     df = df[df["is_recid"] != -1].copy()
     df = df[df["c_charge_degree"] != "O"].copy()
     df = df[df["score_text"] != "N/A"].copy()
