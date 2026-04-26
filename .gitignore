@@ -15,3 +15,7 @@ data/compas_raw.csv
 *.pt
 *.pkl
 .DS_Store
+*.csv
+*.log
+*.zip
+*.tar.gz
