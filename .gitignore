@@ -19,3 +19,4 @@ data/compas_raw.csv
 *.log
 *.zip
 *.tar.gz
+raw/
