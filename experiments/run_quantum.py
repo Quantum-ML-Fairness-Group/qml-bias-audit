@@ -10,7 +10,7 @@ Usage:
     python experiments/run_quantum.py --model angle      # single model
     python experiments/run_quantum.py --n_epochs 30      # quick run
     python experiments/run_quantum.py --subsample 300    # small data for testing
-    python experiments/run_quantum.py --noise fixed --noise_strength 0.01
+    python experiments/run_quantum.py --noise fixed --noise_strength 0.05
     python experiments/run_quantum.py --noise random --noise_strength 0.05
 
 Runtime note:

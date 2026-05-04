@@ -11,6 +11,7 @@ from typing import Optional
 import numpy as np
 import pennylane as qml
 from pennylane import numpy as pnp
+from pennylane.noise import op_in
 from sklearn.base import BaseEstimator, ClassifierMixin
 from tqdm import tqdm
 
@@ -18,6 +19,8 @@ from models.quantum.ansatze import get_ansatz
 from models.quantum.encodings import EncodingSpec, resolve_encoding
 
 _NOISE_TYPES = ("fixed", "random")
+_SINGLE_Q_GATES = [qml.RX, qml.RY, qml.RZ, qml.Rot, qml.Hadamard, qml.PhaseShift]
+_TWO_Q_GATES    = [qml.CNOT, qml.CZ, qml.CY]
 
 
 def _measurement_op(measurement: str, n_qubits: int):
@@ -103,25 +106,14 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
     def _build_circuit(self, dev, enc: EncodingSpec):
         ans = get_ansatz(self.ansatz)
         measurement = self.measurement
-        noise_type = self.noise_type
         n_qubits = enc.n_qubits
-
-        # Mutable holder so the training loop can update noise strength per batch.
-        noise_p = [0.0]
 
         @qml.qnode(dev, interface="autograd", diff_method="best")
         def circuit(weights, x):
             enc.apply_encoding_circuit(x)
             ans.apply(weights, n_qubits)
-            if noise_type:
-                for wire in range(n_qubits):
-                    qml.RX(noise_p[0] * np.pi, wires=wire)
-                    qml.RZ(noise_p[0] * np.pi, wires=wire)
-            # Measurement must be constructed inside the qfunc (not captured from outside).
             return _measurement_op(measurement, n_qubits)
 
-        # Expose the noise holder so _loss can update it.
-        circuit._noise_p = noise_p
         return circuit
 
     def _init_weights(self, n_qubits: int):
@@ -129,12 +121,55 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         ans = get_ansatz(self.ansatz)
         return ans.init_weights(self.n_layers, n_qubits, rng)
 
-    def _set_noise_p(self, circuit, rng: np.random.RandomState):
-        """Update the circuit's depolarizing noise probability for the current batch."""
-        if self.noise_type == "fixed":
-            circuit._noise_p[0] = float(self.noise_strength)
-        elif self.noise_type == "random":
-            circuit._noise_p[0] = float(rng.uniform(0.0, self.noise_strength))
+    def _build_noisy_jax_circuit(self, enc: EncodingSpec, gamma: float):
+        import jax
+        jax.config.update("jax_enable_x64", True)
+
+        # Return cached JIT circuit when gamma has not changed
+        if hasattr(self, "_jax_circuit_cache") and self._jax_circuit_gamma == gamma:
+            return self._jax_circuit_cache
+
+        ans = get_ansatz(self.ansatz)
+        measurement = self.measurement
+        n_qubits = enc.n_qubits
+
+        dev = qml.device("default.mixed", wires=n_qubits, shots=self.shots)
+
+        # Capture gamma in a mutable cell so the closure works with add_noise
+        _gamma = [gamma]
+
+        def _single_q_depolarize(op, **kwargs):
+            qml.DepolarizingChannel(_gamma[0], wires=op.wires[0])
+
+        def _multi_q_depolarize(op, **kwargs):
+            for wire in op.wires:
+                qml.DepolarizingChannel(_gamma[0], wires=wire)
+
+        noise_model = qml.NoiseModel(
+            {
+                op_in(_SINGLE_Q_GATES): _single_q_depolarize,
+                op_in(_TWO_Q_GATES):    _multi_q_depolarize,
+            }
+        )
+
+        @qml.qnode(dev, interface="jax")
+        def single_circuit(weights, x):
+            enc.apply_encoding_circuit(x)
+            ans.apply(weights, n_qubits)
+            return _measurement_op(measurement, n_qubits)
+
+        noisy_single = qml.add_noise(single_circuit, noise_model)
+        # weights are shared across the batch; x is vectorised over axis 0
+        batched = jax.vmap(noisy_single, in_axes=(None, 0))
+        jitted = jax.jit(batched)
+
+        self._jax_circuit_cache = jitted
+        self._jax_circuit_gamma = gamma
+        return jitted
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
 
     def _loss(self, circuit, weights, X_batch, y_batch):
         predictions = circuit(weights, X_batch)
@@ -164,7 +199,6 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
         weights = self._init_weights(enc.n_qubits)
         opt = qml.AdamOptimizer(stepsize=self.lr)
 
-        rng = np.random.RandomState(self.random_state)
         n = len(X_train)
         best_val = float("inf")
         self.val_loss_history_ = []
@@ -182,8 +216,6 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
                 Xb = X_shuf[start : start + self.batch_size]
                 yb = y_shuf[start : start + self.batch_size]
 
-                self._set_noise_p(circuit, rng)
-
                 def cost(w):
                     return self._loss(circuit, w, Xb, yb)
 
@@ -193,7 +225,6 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
             self.loss_history_.append(float(epoch_loss))
 
             if X_val_p is not None:
-                self._set_noise_p(circuit, rng)
                 vl = float(self._loss(circuit, weights, X_val_p, y_val))
                 self.val_loss_history_.append(vl)
                 if vl < best_val:
@@ -207,11 +238,26 @@ class ConfigurableVQC(BaseEstimator, ClassifierMixin):
     def predict_proba(self, X) -> np.ndarray:
         if self.weights_ is None or self.encoding_spec_ is None:
             raise RuntimeError("Model not fitted. Call fit() first.")
-        if self.noise_type:
+
+        enc = self.encoding_spec_
+        X_enc = enc.preprocess(np.asarray(X, dtype=np.float64))
+
+        if self.noise_type is None:
+            scores = np.array(self._circuit(self.weights_, X_enc), dtype=float)
+        else:
+            import jax.numpy as jnp
+
             rng = np.random.RandomState(self.random_state)
-            self._set_noise_p(self._circuit, rng)
-        X_enc = self.encoding_spec_.preprocess(np.asarray(X, dtype=np.float64))
-        scores = np.array(self._circuit(self.weights_, X_enc), dtype=float)
+            if self.noise_type == "fixed":
+                gamma = self.noise_strength
+            else:  # random: sample once, use for the whole test set
+                gamma = float(rng.uniform(0.0, self.noise_strength))
+
+            noisy_circuit = self._build_noisy_jax_circuit(enc, gamma)
+            weights_jax = jnp.array(np.array(self.weights_))
+            x_jax = jnp.array(X_enc)
+            scores = np.array(noisy_circuit(weights_jax, x_jax), dtype=float)
+
         probs = np.clip((scores + 1) / 2, 0.0, 1.0)
         return np.column_stack([1 - probs, probs])
 
